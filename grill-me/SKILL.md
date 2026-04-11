@@ -19,3 +19,6 @@ Interview me about this idea until we reach a shared understanding. Walk down th
   - what is still open
   - the biggest remaining risk
   - the recommended next step
+- After the summary, prompt the user with their next move:
+  - **Preferred**: run `/write-a-prd` to turn this session into a PRD, GitHub milestone, and tracked issues
+  - **Alternative**: proceed directly to implementation without a PRD if the scope is small enough to hold in your head
