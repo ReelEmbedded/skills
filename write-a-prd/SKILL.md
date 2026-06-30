@@ -1,9 +1,77 @@
 ---
 name: write-a-prd
-description: Create a PRD through user interview, codebase exploration, and module design, then create a GitHub milestone with the PRD as its description and break it into feature issues. Use when user wants to write a PRD, create a product requirements document, or plan a new feature.
+description: Create a PRD through user interview, codebase exploration, and module design, then create a milestone with the PRD as its description and break it into feature issues. Use when user wants to write a PRD, create a product requirements document, or plan a new feature.
 ---
 
 This skill will be invoked when the user wants to create a PRD. You may skip steps if you don't consider them necessary.
+
+## Step 0: Detect Git Platform
+
+Run this routine once per session before any operation that calls `gh` or `glab`.
+
+### Step 0.1: Check the cache
+
+Look for a `## Claude Skills Config` section in the project's `CLAUDE.md` file (in the current working directory).
+
+If the section exists and contains a `git-cli` line, read the values for `git-platform`, `git-cli`, and `git-remote-host` from it and **skip to Step 0.4** (authentication check).
+
+### Step 0.2: Detect the remote host
+
+Run:
+
+```
+git remote -v
+```
+
+Parse the output for the fetch remote URL. Extract the hostname:
+
+- If the URL contains `github.com` → platform is `github`, CLI is `gh`, host is `github.com`
+- If the URL contains `gitlab.com` → platform is `gitlab`, CLI is `glab`, host is `gitlab.com`
+- If the URL contains any other domain (self-hosted) → go to **Step 0.3**
+- If there are no remotes → stop and tell the user: "No git remote found. Add a remote and re-run."
+
+### Step 0.3: Ask the user (unknown domain only)
+
+If the hostname did not match `github.com` or `gitlab.com`, ask the user exactly once:
+
+> I see remote `<host>` — is this GitHub or GitLab?
+
+Wait for the user's answer, then set:
+
+- GitHub → platform `github`, CLI `gh`
+- GitLab → platform `gitlab`, CLI `glab`
+
+### Step 0.4: Write the config block
+
+Write or append the following block to `CLAUDE.md` in the current working directory:
+
+```
+## Claude Skills Config
+- **git-platform**: github | gitlab
+- **git-cli**: gh | glab
+- **git-remote-host**: <detected host>
+```
+
+Fill in the detected values (use exactly one of the two options shown for each field).
+
+- If `CLAUDE.md` does not exist: create it containing only this section.
+- If `CLAUDE.md` exists but does not have a `## Claude Skills Config` section: append this section after the existing content, preceded by a blank line.
+- If `CLAUDE.md` already has a `## Claude Skills Config` section (i.e. you reached this step via Step 0.1's cache hit): do not modify the file.
+
+### Step 0.5: Verify authentication
+
+Run the appropriate auth check:
+
+- GitHub: `gh auth status`
+- GitLab: `glab auth status`
+
+If the command exits with a non-zero status or prints an error indicating the user is not authenticated, stop immediately and tell the user:
+
+> `<cli>` is not authenticated. Run `<cli> auth login` and re-run this skill.
+
+If authentication is confirmed, continue with the calling skill.
+
+---
 
 1. Check the current conversation for a prior `/grill-me` session. If one exists, extract the problem description, decisions, constraints, risks, and open questions from it — do not re-ask anything already answered. Summarize what you found and confirm with the user before continuing. If no grill-me session exists, ask the user for a long, detailed description of the problem they want to solve and any potential ideas for solutions.
 
@@ -17,12 +85,23 @@ A deep module (as opposed to a shallow module) is one which encapsulates a lot o
 
 Check with the user that these modules match their expectations. Check with the user which modules they want tests written for.
 
-5. Once you have a complete understanding of the problem and solution, write the PRD using the template below and create a GitHub milestone with the PRD as its description:
+5. Once you have a complete understanding of the problem and solution, write the PRD using the template below and create a milestone with the PRD as its description.
+
+   **GitHub:**
    ```
    gh api repos/:owner/:repo/milestones --method POST \
      --field title="<PRD title>" \
      --field description="<full PRD content>"
    ```
+
+   **GitLab:** First derive the URL-encoded project path from `git remote -v` (e.g. `mygroup/myrepo` → `mygroup%2Fmyrepo`), then run:
+   ```
+   glab api projects/:fullpath/milestones --method POST \
+     --field title="<PRD title>" \
+     --field description="<full PRD content>"
+   ```
+   Save the `id` field from the response — you will need it when creating issues.
+
    The milestone IS the PRD. There is no separate PRD issue. Progress is tracked by open/closed issue count.
 
 6. Break the PRD into **tracer bullet** issues — thin vertical slices that each cut through ALL integration layers end-to-end, not horizontal slices of one layer.
@@ -37,7 +116,23 @@ Check with the user that these modules match their expectations. Check with the 
 
    Iterate until the user approves the breakdown.
 
-7. Create a GitHub issue for each approved slice using `gh issue create`, in dependency order (blockers first) so you can reference real issue numbers. Assign every issue to the milestone.
+7. Create an issue for each approved slice, in dependency order (blockers first) so you can reference real issue numbers. Assign every issue to the milestone.
+
+   **GitHub:**
+   ```
+   gh issue create \
+     --title "<issue title>" \
+     --body "<issue body>" \
+     --milestone "<PRD title>"
+   ```
+
+   **GitLab:**
+   ```
+   glab issue create \
+     --title "<issue title>" \
+     --description "<issue body>" \
+     --milestone-id <milestone id>
+   ```
 
 <issue-template>
 ## What to build
